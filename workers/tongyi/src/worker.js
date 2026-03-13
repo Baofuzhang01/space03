@@ -410,6 +410,7 @@ async function buildTodayDispatchUsers(KV, schoolId, school, today) {
       username: user.phone || user.username,
       password: user.password,
       remark: user.remark || user.username || user.phone,
+      nickname: user.username,
       slots: activeSlots.map(s => ({
         roomid: s.roomid,
         seatid: (s.seatid || "").split(",").map(x => x.trim()).filter(Boolean),
