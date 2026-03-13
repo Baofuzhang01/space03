@@ -115,6 +115,10 @@ jobs:
           fi
 
           log_file="key_logs_${USER_NAME}.txt"
+          if [[ ! -f "$log_file" && -f reserve.log ]]; then
+            grep -E "Start first attempt|login successfully|\[strategic\]|\[burst\]|submit parameter|submit enc|Get token|Got token|token fetch failed|No submit_enc|captcha|Slider captcha token|Textclick captcha token|保存失败|seat-increment|dispatch|HTTP [0-9]{3}|exception|error|Current time|reserved successfully|success list" reserve.log | tail -n 260 > "$log_file" || true
+          fi
+
           if [[ ! -f "$log_file" ]]; then
             msg_body="reserve key log file not found: $log_file"
           else
@@ -162,7 +166,7 @@ EOF
           pip install -r requirements.txt
 
       - name: Send test message to Feishu (manual)
-        if: ${{ always() }}
+        if: ${{ github.event.inputs.test_feishu_only == 'true' }}
         env:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
           FEISHU_BOT_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK }}
@@ -249,6 +253,10 @@ EOF
           fi
 
           log_file="key_logs_${USER_NAME}.txt"
+          if [[ ! -f "$log_file" && -f reserve.log ]]; then
+            grep -E "Start first attempt|login successfully|\[strategic\]|\[burst\]|submit parameter|submit enc|Get token|Got token|token fetch failed|No submit_enc|captcha|Slider captcha token|Textclick captcha token|保存失败|seat-increment|dispatch|HTTP [0-9]{3}|exception|error|Current time|reserved successfully|success list" reserve.log | tail -n 260 > "$log_file" || true
+          fi
+
           if [[ ! -f "$log_file" ]]; then
             msg_body="reserve key log file not found: $log_file"
           else
