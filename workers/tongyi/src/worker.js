@@ -73,6 +73,10 @@ function jsonResp(data, status = 200) {
   });
 }
 
+const LAST_SCHEDULED_RUN_KEY = "meta:last_scheduled_run";
+const FALLBACK_TRIGGER_PREFIX = "meta:fallback_trigger";
+const FALLBACK_TRIGGER_TTL_SECONDS = 14 * 24 * 60 * 60;
+
 // ─── KV 操作 ───
 
 async function getSchools(KV) {
@@ -129,6 +133,40 @@ async function deleteUser(KV, schoolId, userId) {
   await KV.delete(`school:${schoolId}:user:${userId}`);
   const userIds = await getSchoolUsers(KV, schoolId);
   await saveSchoolUsers(KV, schoolId, userIds.filter(id => id !== userId));
+}
+
+async function saveScheduledHeartbeat(KV) {
+  await KV.put(LAST_SCHEDULED_RUN_KEY, JSON.stringify({
+    at: new Date().toISOString(),
+    beijing_date: beijingDate(),
+    beijing_time: beijingHHMM(),
+    day_of_week: beijingDayOfWeek(),
+  }));
+}
+
+async function getScheduledHeartbeat(KV) {
+  const raw = await KV.get(LAST_SCHEDULED_RUN_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+
+function buildFallbackTriggerKey(date, schoolId) {
+  return `${FALLBACK_TRIGGER_PREFIX}:${date}:${schoolId}`;
+}
+
+async function getFallbackTriggerRecord(KV, date, schoolId) {
+  const raw = await KV.get(buildFallbackTriggerKey(date, schoolId));
+  return raw ? JSON.parse(raw) : null;
+}
+
+async function saveFallbackTriggerRecord(KV, date, schoolId, record) {
+  await KV.put(
+    buildFallbackTriggerKey(date, schoolId),
+    JSON.stringify(record),
+    {
+      // 兜底标记是按“学校 + 日期”生成的，会自然累积；这里保留 14 天方便回看，同时避免无限增长。
+      expirationTtl: FALLBACK_TRIGGER_TTL_SECONDS,
+    }
+  );
 }
 
 // ─── 默认配置 ───
@@ -624,6 +662,8 @@ async function handleScheduled(env) {
   const today = beijingDayOfWeek();
   const schoolIds = await getSchools(env.SEAT_KV);
 
+  await saveScheduledHeartbeat(env.SEAT_KV);
+
   for (const schoolId of schoolIds) {
     const school = await getSchool(env.SEAT_KV, schoolId);
     if (!school || school.trigger_time !== now) continue;
@@ -642,6 +682,22 @@ async function handleScheduled(env) {
 async function handleAPI(request, env, path) {
   const KV = env.SEAT_KV;
   const method = request.method;
+
+  // GET /api/status
+  if (method === "GET" && path === "/api/status") {
+    const schoolIds = await getSchools(KV);
+    const lastScheduledRun = await getScheduledHeartbeat(KV);
+    return jsonResp({
+      ok: true,
+      worker: "tongyi",
+      now: new Date().toISOString(),
+      beijing_date: beijingDate(),
+      beijing_time: beijingHHMM(),
+      day_of_week: beijingDayOfWeek(),
+      schoolCount: schoolIds.length,
+      lastScheduledRun,
+    });
+  }
 
   // GET /api/schools
   if (method === "GET" && path === "/api/schools") {
@@ -820,11 +876,57 @@ async function handleAPI(request, env, path) {
     const school = await getSchool(KV, schoolId);
     if (!school) return jsonResp({ error: "School not found" }, 404);
     const today = beijingDayOfWeek();
+    const todayDate = beijingDate();
+    const triggerSource = (request.headers.get("X-Trigger-Source") || "").trim();
+    const fallbackMode = (request.headers.get("X-Fallback-Mode") || "").trim();
+    const isScheduledFallback = triggerSource === "worker2" && fallbackMode === "scheduled";
+
+    if (isScheduledFallback) {
+      const existingRecord = await getFallbackTriggerRecord(KV, todayDate, schoolId);
+      if (existingRecord) {
+        return jsonResp({
+          ok: true,
+          skipped: true,
+          reason: "fallback_already_triggered_today",
+          schoolId,
+          schoolName: school.name,
+          date: todayDate,
+          fallbackRecord: existingRecord,
+        });
+      }
+    }
+
     const users = await buildTodayDispatchUsers(KV, schoolId, school, today);
     if (users.length === 0) {
+      if (isScheduledFallback) {
+        await saveFallbackTriggerRecord(KV, todayDate, schoolId, {
+          source: "worker2",
+          mode: "scheduled",
+          at: new Date().toISOString(),
+          beijing_time: beijingHHMM(),
+          schoolId,
+          schoolName: school.name,
+          triggeredUsers: 0,
+          okBatches: 0,
+          totalBatches: 0,
+        });
+      }
       return jsonResp({ ok: true, triggeredUsers: 0, okBatches: 0, totalBatches: 0 });
     }
     const result = await dispatchUsersInBatches(env, school, users);
+    if (isScheduledFallback) {
+      await saveFallbackTriggerRecord(KV, todayDate, schoolId, {
+        source: "worker2",
+        mode: "scheduled",
+        at: new Date().toISOString(),
+        beijing_time: beijingHHMM(),
+        schoolId,
+        schoolName: school.name,
+        triggeredUsers: users.length,
+        okBatches: result.okBatches,
+        totalBatches: result.totalBatches,
+      });
+    }
     return jsonResp({
       ok: true,
       triggeredUsers: users.length,

@@ -12,7 +12,9 @@ def extract_plan(text):
             roomid = roomid_match.group(1)
         seatid_match = re.match(r"座位号[：:](\d+)", line)
         if seatid_match:
-            seatid = [seatid_match.group(1)]
+            # 补零为3位数
+            seat_num = seatid_match.group(1).zfill(3)
+            seatid = [seat_num]
 
     # 中文星期映射
     week_map = {
@@ -49,10 +51,12 @@ def extract_plan(text):
         day_en = week_map.get(day_cn, day_cn)
         start = pad_time(start)
         end = pad_time(end)
+        # 确保seatid为3位数
+        seatid_padded = [s.zfill(3) for s in seatid]
         plans.append({
             "times": [start, end],
             "roomid": roomid,
-            "seatid": seatid,
+            "seatid": seatid_padded,
             "seatPageId": roomid,
             "daysofweek": [day_en]
         })
@@ -61,10 +65,12 @@ def extract_plan(text):
         start, end = m2
         start = pad_time(start)
         end = pad_time(end)
+        # 确保seatid为3位数
+        seatid_padded = [s.zfill(3) for s in seatid]
         plans.append({
             "times": [start, end],
             "roomid": roomid,
-            "seatid": seatid,
+            "seatid": seatid_padded,
             "seatPageId": roomid,
             "daysofweek": all_days
         })

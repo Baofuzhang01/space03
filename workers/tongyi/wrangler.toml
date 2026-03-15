@@ -9,6 +9,7 @@
 #    wrangler secret put API_KEY        # 管理面板登录密钥
 
 name = "tongyi"
+account_id = "288006df1270dacb1b639eb6b60ad881"
 main = "src/worker.js"
 compatibility_date = "2024-01-01"
 

@@ -1,0 +1,14 @@
+name = "worker2"
+account_id = "590f9a2f382e955da9ae96361862ee87"
+main = "worker2.js"
+compatibility_date = "2024-01-01"
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/7cae2f91-8518-4ba1-bf98-dec6054d936c"
+FEISHU_KEYWORD = "检测"
+TRIGGER_API = "https://tongyi.baofuzhang0402.workers.dev/api"
+API_KEY = "depot005q"
+TRIGGER_TIMEOUT_MINUTES = "30"
